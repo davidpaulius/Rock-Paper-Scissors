@@ -1,0 +1,513 @@
+#include "Include.h"
+
+int max_strain = 130;
+
+BHand  bh;           // Handles all hand communication
+int    value;        // Hand parameter obtained with Get
+int    result;       // Return value (error) of all BHand calls
+
+int    szbuffer;     // Size of data buffers
+int*   pdata[4][8];  // Pointers to data buffers
+int    setpos(char finger, int despos, int velocity, int gain);
+int	   N;			 //Save data count
+//int		stop(void);
+
+double ForceData0[numIterations][6];
+double ForceData1[numIterations][6];
+
+int main()
+{
+	int pose_num = POSE_NUM;
+	int pid = 0;
+  //  int num_corners = (CHECKER_COLS-1)*(CHECKER_ROWS-1);
+	printf( "Initialization..." );
+
+	Initialize(8);
+	printf( " Done\n" );
+
+	printf( "Before - " );
+	if( Before() )
+		return 0;
+	printf( " Done\n" );
+
+	PrepareRealTime();
+
+	printf( "RealTime Loop - " );
+	if( RunRealTime() )
+		//return;
+	printf( " Done\n" );
+
+	SaveData( "RealTime" );
+
+	printf( "After - " );
+//*******************************Read Force**************************
+		double Force0[6], Force1[6];
+
+		SensorInitialize();
+		//Start reading.
+		for(int ii = 0; ii<numIterations; ii++)
+		{
+			readForce();
+			Sensor0.getForce(ForceData0[ii]);
+			Sensor1.getForce(ForceData1[ii]);
+
+			Sleep(10);
+		}
+
+		saveFile();
+//*******************************End of Read Force**************************	
+	if( After() )
+		return 0;
+	printf( " Done\n" );
+
+	float ** pose_mem;
+	pose_mem = new float* [pose_num];
+
+ //   MyRobot mRobot;
+
+ //     //mRobot.ReadPose();
+	//  mRobot.StartPipeServer();
+	//  mRobot.ListenPipeConnect();
+
+	//  XyzWpr ps = { 729.377,-283.458, -59.735,-6.07433032989502,-75.7170867919922,155.657867431641,0};
+	//  mRobot.SetPose(ps);
+	//  cout<<"Go to pose "<<0<<endl;
+	//  getchar();
+
+	//  float * current_pose = new float[DOF];
+	//  mRobot.GoPose(pid, current_pose);
+
+	//  XyzWpr ps1 = { 729.377,-283.458, -65.735,-6.07433032989502,-75.7170867919922,155.657867431641,0};
+	//  mRobot.SetPose(ps1);
+	//  cout<<"Go to pose "<<1<<endl;
+	//  getchar();
+	//  mRobot.GoPose(pid, current_pose);
+	///*  for(int tt =0;tt<DOF;tt++)
+	//  {
+	//	  cout<<current_pose[tt]<<endl;
+	//  }*/
+
+	//  mRobot.DisconnectPipe();
+
+
+	  getchar();
+    cout<<"======== Input any key to end the program! =================="<<endl;
+
+    getchar();
+
+	delete []pose_mem;
+
+return 0;
+}
+
+
+//****************************************Start of sensor code********************************************************
+
+void saveFile()
+{
+	fstream *File0, *File1;
+	int i = 0, j = 0;
+
+	File0 = new fstream("Force0.txt", ios::out | ios::binary | ios::trunc);
+	for (i=0; i < numIterations; i++)
+	{
+		for(j=0; j<6; j++)
+		{
+			*File0 << ForceData0[i][j]<<" ";
+		}
+		//*File1 << CtrlTime[NUM_DATA-1]<<endl;
+		*File0 << endl;
+	}
+
+	File0->clear();
+	File0->close();
+
+	File1 = new fstream("Force1.txt", ios::out | ios::binary | ios::trunc);
+	for (i=0; i < numIterations; i++)
+	{
+		for(j=0; j<6; j++)
+		{
+			*File1 << ForceData1[i][j]<<" ";
+		}
+		//*File1 << CtrlTime[NUM_DATA-1]<<endl;
+		*File1 << endl;
+	}
+
+	File1->clear();
+	File1->close();
+}
+
+void SensorInitialize()
+{
+	double Voltage0[6], Voltage1[6];
+
+	DAQInitialize();
+	setMatrix();	//Send calibration matrix to sensor object.
+	readVoltage(Voltage0, Voltage1);
+	//get unloaded voltage for sensor 0;
+	Sensor0.setVoltage(Voltage0);
+	Sensor0.getOffsetVoltage();
+
+		Sensor1.setVoltage(Voltage1);
+	Sensor1.getOffsetVoltage();
+}//End of SensorInitialize();
+
+void readForce(void)
+{
+	double Voltage0[6], Voltage1[6];
+
+	readVoltage(Voltage0, Voltage1);
+	//Get forces from sensor 0
+	Sensor0.setVoltage(Voltage0);
+	Sensor0.voltage2Force();
+//Get forces from sensor 1
+	Sensor1.setVoltage(Voltage1);
+	Sensor1.voltage2Force();
+}//End of readForce
+
+void DAQInitialize()
+{
+	I16 card, card_num=0;	
+	if ((card=Register_Card (PCI_9113, card_num)) <0 ) {
+		printf("Register_Card error=%d", card);
+		exit(1);
+	}
+
+	if (err!=0)
+	{
+		printf("AI_ContReadChannel error=%d", err);
+		exit(1);
+	}
+}//End of DAQInitialize
+
+void readVoltage(double * voltage0, double * voltage1)
+{
+	U16 j=0;
+	double voltage[NUMChannel];
+
+	for(j = 0; j<NUMChannel; j++)
+	{
+		//	I16 AI_VReadChannel (U16 CardNumber, U16 Channel,U16 AdRange, F64 *voltage)
+		err = AI_VReadChannel (card, j, range, &voltage[j]);
+		//cout<<j<<"="<<voltage[i][j]<<endl;
+
+				if (err!=0)
+		{
+			printf("AI_ContReadChannel error=%d", err);
+			exit(1);
+		}
+	}
+
+for(int i=0; i<6; i++)
+{
+	voltage0[i] = voltage[i];
+	voltage1[i] = voltage[i+6];
+}
+}//End of ReadVoltage
+
+
+void setMatrix()
+{
+	double AmpCalMatrix0[6][6], AmpCalMatrix1[6][6];
+	//9637  Sensor RawCalMatrix
+	double RawCalMatrix0[6][6]={
+		{-3.486208493,	-6.903041322,	66.60394089,	-1344.960447,	-68.13284139,	1351.288548},
+		{-32.10924069,	1577.909451,	24.11977675,	-778.0418049,	41.0139806,	-792.2703216},
+		{1464.497848,	65.43700081,	1470.334179,	53.87110492,	1477.512428,	49.34682443},
+		{-249.6565943,	9511.70975,	8331.229364,	-4403.087269,	-7965.37715,	-5059.008845},
+		{-9287.433687,	-394.6154674,	4443.969903,	8298.080292,	5277.503892,	-7966.893172},
+		{-186.3974957,	5571.762842,	-271.5403687,	5875.155556,	-226.1747232,	5780.014724}
+	};
+
+	//9633 Sensor RawCalMatrix
+	double RawCalMatrix1[6][6]={
+		{-3.794840232,	-32.1044324,	39.94592133,	-1306.133223,	-70.19715221,	1321.098895},
+		{-120.2108566,	1510.727545,	22.80053749,	-788.4841105,	23.3344147,	-720.190785},
+		{1453.424961,	50.83435978,	1451.081347,	57.9763995,	1451.083869,	-38.40427872},
+		{-700.3162788,	9053.763321,	8004.033968,	-4397.889068,	-8342.572299,	-4096.112947},
+		{-9137.205675,	-152.4137472,	4760.026035,	8084.07326,	4902.16003,	-8065.122189},
+		{-495.0328877,	5526.264106,	-84.83427486,	5467.851542,	-285.4175244,	5777.535077}};
+
+
+		double gain[6] ={36.752592,	36.752592,	36.765379,	36.752592,	36.739814,	36.739814};
+		double excitation = 10.094;
+
+		for(int i=0; i<6; i++)
+		{
+			for(int j=0; j<6; j++)
+			{
+				AmpCalMatrix0[i][j]= RawCalMatrix0[i][j]/gain[j]/excitation;	
+				AmpCalMatrix1[i][j]= RawCalMatrix1[i][j]/gain[j]/excitation;	
+			}
+		}
+
+		Sensor0.getCalilibration(AmpCalMatrix0);	
+		Sensor1.getCalilibration(AmpCalMatrix1);
+
+}//End of Set Matrix
+//****************************************End of sensor code********************************************************
+
+//****************************************Start of Hand Code********************************************************
+
+///////////////////////////////////////////////////////////
+// Error Handler - called whenever result!=0
+// Feel free to customize this function
+
+void Error(void)
+{
+	printf( "ERROR: %d\n%s\n", result, bh.ErrorMessage(result) );
+	exit(0);
+}
+
+
+///////////////////////////////////////////////////////////
+//  Initialize hand, set timeouts and baud rate
+
+void Initialize(int port)
+{
+	if( result=bh.InitSoftware(port,THREAD_PRIORITY_TIME_CRITICAL) )
+		Error();
+
+	if( result=bh.ComSetTimeouts(0,100,15000,100,5000) )
+		Error();
+
+	if( result=bh.Baud(9600) )
+		Error();
+
+	if( result=bh.InitHand("") )
+		Error();
+}
+
+
+///////////////////////////////////////////////////////////
+//  Execute commands, return 1 if interrupted with a key
+
+int Before(void)
+{
+	printf( "Press Any Key to Abort..." );
+
+	if( result=bh.Command("sc") )
+		Error();
+	if( _kbhit() )
+		{ _getch(); return 1; }
+
+	if( result=bh.Command("go") )
+		Error();
+	if( _kbhit() )
+		{ _getch(); return 1; }
+
+	return 0;
+}
+
+
+///////////////////////////////////////////////////////////
+//  Set parameters, allocate data buffers, load files
+
+void PrepareRealTime(void)
+{
+	szbuffer = 1000;
+
+	for( int m=0; m<4; m++ )
+		for( int v=0; v<8; v++ )
+		{
+			pdata[m][v] = new int[szbuffer];
+			memset((void*)pdata[m][v], 0, szbuffer*sizeof(int));
+		}
+
+	if( result=bh.RTSetFlags( "123", 1, 1, 1,  1, 1, 1, 1, 0, 1 ))
+		Error();
+
+}
+
+
+int SetPos(int despos1, int despos2, int despos3, int despos4, int v1, int v2, int v3, int v4)
+{int flag=1,curpos[4],despos[4],v[4],pos;
+
+	despos[0]=despos1;
+	despos[1]=despos2;
+	despos[2]=despos3;
+	despos[3]=despos4;
+	v[0]=v1;
+	v[1]=v2;
+	v[2]=v3;
+	v[3]=v4;
+
+	while(flag&&!_kbhit())
+	{ flag=0;
+
+	pos = N%szbuffer;
+	printf("N= %d\n", N);
+		for( int m=0; m<3; m++ )
+		{
+			pdata[m][0][pos] = bh.RTGetPosition( m+'1' );
+			pdata[m][1][pos] = bh.RTGetVelocity( m+'1' );
+			pdata[m][2][pos] = bh.RTGetStrain( m+'1' );
+
+			printf("finger %d position: %d\n", m, pdata[m][0][pos]);
+			printf("finger %d velocity: %d\n", m, pdata[m][1][pos]);
+			printf("finger %d strain: %d\n\n", m, pdata[m][2][pos]);
+
+			curpos[m] = bh.RTGetPosition('1'+m);
+			//printf("position %d: %d\n",m+1, curpos[m]);
+			if(abs(despos[m]-curpos[m])>400 && pdata[m][2][pos] < max_strain)	//(abs(v[m])+10)
+			//if(abs(despos[m]-curpos[m])>400 )	//(abs(v[m])+10)
+			{
+				flag=1;
+				if(despos[m]<curpos[m]) v[m]=-abs(v[m]);
+				else v[m]=abs(v[m]);
+				bh.RTSetVelocity(m+'1',v[m]);
+				
+			}
+			else
+				bh.RTSetVelocity(m+'1',0);
+		}
+		pos = (N+1)%szbuffer;
+		bh.RTUpdate();
+		N++;
+	}
+
+	flag=1;
+
+	/*while(flag&&!_kbhit())
+	{flag=0;
+		for( int m=0; m<4; m++ )
+		{
+			if(bh.RTGetVelocity( m+'1' ))
+			{
+						bh.RTSetVelocity(m+'1',0);
+						bh.RTUpdate();
+						flag=1;
+			}
+		}
+	}*/
+	return 0;
+}
+
+int PlayPiano(void)
+{
+	int spread=1000;
+	int posup=6000;
+	int posdown=10000;
+	int speed=50;
+	int lowspeed=25;
+	int inc=20;
+	int shortime=500;
+	int longtime=1000;
+
+//***********finger 1,2,3**********
+	SetPos(posdown, posdown, posdown,spread, speed, speed, speed, 20);
+	//SetPos(posup, posup, posup,spread, speed, speed, speed, 20);
+	Sleep(longtime);
+
+
+	return 0;
+}
+
+///////////////////////////////////////////////////////////
+//  Run RealRime loop, return 1 if interrupted with a key
+
+int RunRealTime(void)
+{
+	int spread=1400;
+	N=0;
+	//DWORD  time, tmstart;
+	bool terminate=false;
+	bh.GoToPosition("4", spread);
+
+	bh.RTStart( "123" );
+	//tmstart = GetTickCount();
+	
+	int gain=50;
+	bh.RTSetGain('1',gain);
+	bh.RTSetGain('2',gain);
+	bh.RTSetGain('3',gain);
+	//bh.RTSetGain('4',gain);
+	bh.RTUpdate();
+
+	printf( "Press Any Key to Abort..." );
+	
+	int posup=14500;
+	//int posup=8000;
+	int posdown=8000;
+	int speed=50;
+	int lowspeed=25;
+	int inc=20;
+	int shortime=200;
+	int longtime=1000;
+
+	Sleep(300);
+	SetPos(posup, posup, 9000,spread, lowspeed, 30, lowspeed, 20);
+//SetPos(posup, posup, posup,spread, lowspeed, 30, lowspeed, 20);
+	posup=10000;
+	posdown=12000;
+	speed = 25;
+	//SetPos(posdown, posdown, posdown-1000, spread, speed, speed, speed, 20);
+/*
+	printf("Please press <ENTER> to continue.");
+	while(getchar() != '\n');
+	
+	PlayPiano();
+
+	spread=1000;
+	bh.GoToDifferentPositions(posup, posup, posup,spread);
+	bh.RTStart( "123" );
+
+	
+	//Sleep(300);
+	SetPos(posup, posup, posup,spread, lowspeed, 30, lowspeed, 20);
+
+	PlayPiano();
+*/
+
+	bh.RTAbort();
+	if( _kbhit() )
+		{ _getch(); return 1; }
+	else
+		return 0;
+}
+
+///////////////////////////////////////////////////////////
+//  Execute commands, return 1 if interrupted with a key
+
+int After(void)
+{
+	printf( "Press Any Key to Abort..." );
+
+	while(1){
+	if( _kbhit() )
+		{ _getch();
+	if( result=bh.Command("t") )
+		Error();
+	return 1; }
+	}
+	return 0;
+}
+
+
+///////////////////////////////////////////////////////////
+//  Save all buffers into a text file
+
+void SaveData(char* name)
+{
+	FILE* fp = fopen(name, "wt");
+	if( !fp )
+		return;
+	if(N > 1000) N = 1000;
+	fprintf(fp, "%d ", N);
+	fprintf(fp, "\n");
+
+	for( int r=0; r<szbuffer; r++ )
+	{
+		for( int v=0; v<8; v++ )
+		{
+			for( int m=0; m<4; m++ )
+				fprintf(fp, "%d ", pdata[m][v][r]);
+			fprintf(fp, "  ");
+		}
+		fprintf(fp, "\n");
+	}
+
+	fclose(fp);
+}
+
+//***************************************************************End of hand code*******************************************
